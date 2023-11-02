@@ -1,0 +1,15 @@
+version: '2'
+plugins:
+- name: golang
+  wasm:
+    url: file://../../../../bin/sqlc-gen-go.wasm
+sql:
+- schema: schema.sql
+  queries: query.sql
+  engine: postgresql
+  codegen:
+  - plugin: golang
+    out: go
+    options:
+      package: querytest
+      sql_package: pgx/v5

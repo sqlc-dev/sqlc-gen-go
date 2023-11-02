@@ -1,8 +1,18 @@
-all: sqlc-gen-go sqlc-gen-go.wasm
+.PHONY: build test
 
-sqlc-gen-go:
-	cd plugin && go build -o ~/bin/sqlc-gen-go ./main.go
+build:
+	go build ./...
 
-sqlc-gen-go.wasm:
-	cd plugin && GOOS=wasip1 GOARCH=wasm go build -o sqlc-gen-go.wasm main.go
-	openssl sha256 plugin/sqlc-gen-go.wasm
+test: bin/sqlc-gen-go.wasm
+	go test ./...
+
+all: bin/sqlc-gen-go bin/sqlc-gen-go.wasm
+
+bin/sqlc-gen-go: bin go.mod go.sum $(wildcard **/*.go)
+	cd plugin && go build -o ../bin/sqlc-gen-go ./main.go
+
+bin/sqlc-gen-go.wasm: bin/sqlc-gen-go
+	cd plugin && GOOS=wasip1 GOARCH=wasm go build -o ../bin/sqlc-gen-go.wasm main.go
+
+bin:
+	mkdir -p bin
