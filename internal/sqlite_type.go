@@ -4,9 +4,9 @@ import (
 	"log"
 	"strings"
 
-	"github.com/sqlc-dev/sqlc-go/sdk"
+	"github.com/sqlc-dev/plugin-sdk-go/plugin"
+	"github.com/sqlc-dev/plugin-sdk-go/sdk"
 	"github.com/sqlc-dev/sqlc-gen-go/internal/debug"
-	"github.com/sqlc-dev/sqlc-go/plugin"
 )
 
 func sqliteType(req *plugin.GenerateRequest, col *plugin.Column) string {

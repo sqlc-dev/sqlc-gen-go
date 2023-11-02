@@ -3,7 +3,7 @@ package opts
 import (
 	"strings"
 
-	"github.com/sqlc-dev/sqlc-go/plugin"
+	"github.com/sqlc-dev/plugin-sdk-go/plugin"
 )
 
 // The ShimOverride struct exists to bridge the gap between the Override struct

@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sqlc-dev/sqlc-go/pattern"
-	"github.com/sqlc-dev/sqlc-go/plugin"
+	"github.com/sqlc-dev/plugin-sdk-go/pattern"
+	"github.com/sqlc-dev/plugin-sdk-go/plugin"
 )
 
 type Override struct {

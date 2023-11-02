@@ -6,7 +6,7 @@ require (
 	github.com/fatih/structtag v1.2.0
 	github.com/google/go-cmp v0.5.9
 	github.com/jinzhu/inflection v1.0.0
-	github.com/sqlc-dev/sqlc-go v1.22.1-0.20231102170509-ee94c710d92e
+	github.com/sqlc-dev/plugin-sdk-go v1.23.0
 )
 
 require (

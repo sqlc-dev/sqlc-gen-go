@@ -3,8 +3,8 @@ package golang
 import (
 	"testing"
 
-	"github.com/sqlc-dev/sqlc-go/metadata"
-	"github.com/sqlc-dev/sqlc-go/plugin"
+	"github.com/sqlc-dev/plugin-sdk-go/metadata"
+	"github.com/sqlc-dev/plugin-sdk-go/plugin"
 )
 
 func TestPutOutColumns_ForZeroColumns(t *testing.T) {

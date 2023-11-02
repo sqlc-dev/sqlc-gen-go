@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sqlc-dev/sqlc-go/metadata"
-	"github.com/sqlc-dev/sqlc-go/plugin"
+	"github.com/sqlc-dev/plugin-sdk-go/metadata"
+	"github.com/sqlc-dev/plugin-sdk-go/plugin"
 )
 
 type QueryValue struct {
