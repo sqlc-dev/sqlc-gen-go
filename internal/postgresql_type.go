@@ -8,7 +8,7 @@ import (
 	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 	"github.com/sqlc-dev/sqlc-go/sdk"
 	"github.com/sqlc-dev/sqlc-gen-go/internal/debug"
-	"buf.build/gen/go/sqlc/sqlc/protocolbuffers/go/protos/plugin"
+	"github.com/sqlc-dev/sqlc-go/plugin"
 )
 
 func parseIdentifierString(name string) (*plugin.Identifier, error) {
@@ -34,7 +34,7 @@ func parseIdentifierString(name string) (*plugin.Identifier, error) {
 	}
 }
 
-func postgresType(req *plugin.CodeGenRequest, options *opts.Options, col *plugin.Column) string {
+func postgresType(req *plugin.GenerateRequest, options *opts.Options, col *plugin.Column) string {
 	columnType := sdk.DataType(col.Type)
 	notNull := col.NotNull || col.IsArray
 	driver := parseDriver(options.SqlPackage)

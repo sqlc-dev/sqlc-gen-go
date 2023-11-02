@@ -1,12 +1,11 @@
 package opts
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"maps"
 
-	"buf.build/gen/go/sqlc/sqlc/protocolbuffers/go/protos/plugin"
+	"github.com/sqlc-dev/sqlc-go/plugin"
 )
 
 type Options struct {
@@ -48,7 +47,7 @@ type GlobalOptions struct {
 	Rename    map[string]string `json:"rename,omitempty" yaml:"rename"`
 }
 
-func Parse(req *plugin.CodeGenRequest) (*Options, error) {
+func Parse(req *plugin.GenerateRequest) (*Options, error) {
 	options, err := parseOpts(req)
 	if err != nil {
 		return nil, err
@@ -69,14 +68,13 @@ func Parse(req *plugin.CodeGenRequest) (*Options, error) {
 	return options, nil
 }
 
-func parseOpts(req *plugin.CodeGenRequest) (*Options, error) {
+func parseOpts(req *plugin.GenerateRequest) (*Options, error) {
 	var options Options
 	if len(req.PluginOptions) == 0 {
 		return &options, nil
 	}
-	dec := json.NewDecoder(bytes.NewReader(req.PluginOptions))
-	if err := dec.Decode(&options); err != nil {
-		return &options, fmt.Errorf("unmarshalling options: %w", err)
+	if err := json.Unmarshal(req.PluginOptions, &options); err != nil {
+		return nil, fmt.Errorf("unmarshalling plugin options: %w", err)
 	}
 
 	for i := range options.Overrides {
@@ -93,21 +91,19 @@ func parseOpts(req *plugin.CodeGenRequest) (*Options, error) {
 	return &options, nil
 }
 
-func parseGlobalOpts(req *plugin.CodeGenRequest) (*GlobalOptions, error) {
+func parseGlobalOpts(req *plugin.GenerateRequest) (*GlobalOptions, error) {
 	var options GlobalOptions
-	return &options, nil
-	// if len(req.GlobalOptions) == 0 {
-	// 	return &options, nil
-	// }
-	// dec := json.NewDecoder(bytes.NewReader(req.GlobalOptions))
-	// if err := dec.Decode(&options); err != nil {
-	// 	return &options, fmt.Errorf("unmarshalling options: %w", err)
-	// }
-	// for i := range options.Overrides {
-	// 	if err := options.Overrides[i].parse(req); err != nil {
-	// 		return nil, err
-	// 	}
-	// }
+	if len(req.GlobalOptions) == 0 {
+		return &options, nil
+	}
+	if err := json.Unmarshal(req.GlobalOptions, &options); err != nil {
+		return nil, fmt.Errorf("unmarshalling global options: %w", err)
+	}
+	for i := range options.Overrides {
+		if err := options.Overrides[i].parse(req); err != nil {
+			return nil, err
+		}
+	}
 	return &options, nil
 }
 

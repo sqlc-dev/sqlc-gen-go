@@ -6,10 +6,10 @@ import (
 	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 	"github.com/sqlc-dev/sqlc-go/sdk"
 	"github.com/sqlc-dev/sqlc-gen-go/internal/debug"
-	"buf.build/gen/go/sqlc/sqlc/protocolbuffers/go/protos/plugin"
+	"github.com/sqlc-dev/sqlc-go/plugin"
 )
 
-func mysqlType(req *plugin.CodeGenRequest, options *opts.Options, col *plugin.Column) string {
+func mysqlType(req *plugin.GenerateRequest, options *opts.Options, col *plugin.Column) string {
 	columnType := sdk.DataType(col.Type)
 	notNull := col.NotNull || col.IsArray
 	unsigned := col.Unsigned

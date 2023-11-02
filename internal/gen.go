@@ -7,14 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"go/format"
-	"log"
 	"strings"
 	"text/template"
 
-	"buf.build/gen/go/sqlc/sqlc/protocolbuffers/go/protos/plugin"
 	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
-	"github.com/sqlc-dev/sqlc-go/metadata"
 	"github.com/sqlc-dev/sqlc-go/sdk"
+	"github.com/sqlc-dev/sqlc-go/metadata"
+	"github.com/sqlc-dev/sqlc-go/plugin"
 )
 
 type tmplCtx struct {
@@ -104,7 +103,7 @@ func (t *tmplCtx) codegenQueryRetval(q Query) (string, error) {
 	}
 }
 
-func Generate(ctx context.Context, req *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
+func Generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.GenerateResponse, error) {
 	options, err := opts.Parse(req)
 	if err != nil {
 		return nil, err
@@ -125,12 +124,10 @@ func Generate(ctx context.Context, req *plugin.CodeGenRequest) (*plugin.CodeGenR
 		enums, structs = filterUnusedStructs(enums, structs, queries)
 	}
 
-	log.Println("HELLO")
-
 	return generate(req, options, enums, structs, queries)
 }
 
-func generate(req *plugin.CodeGenRequest, options *opts.Options, enums []Enum, structs []Struct, queries []Query) (*plugin.CodeGenResponse, error) {
+func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, structs []Struct, queries []Query) (*plugin.GenerateResponse, error) {
 	i := &importer{
 		Options: options,
 		Queries: queries,
@@ -285,7 +282,7 @@ func generate(req *plugin.CodeGenRequest, options *opts.Options, enums []Enum, s
 			return nil, err
 		}
 	}
-	resp := plugin.CodeGenResponse{}
+	resp := plugin.GenerateResponse{}
 
 	for filename, code := range output {
 		resp.Files = append(resp.Files, &plugin.File{

@@ -6,10 +6,10 @@ import (
 
 	"github.com/sqlc-dev/sqlc-go/sdk"
 	"github.com/sqlc-dev/sqlc-gen-go/internal/debug"
-	"buf.build/gen/go/sqlc/sqlc/protocolbuffers/go/protos/plugin"
+	"github.com/sqlc-dev/sqlc-go/plugin"
 )
 
-func sqliteType(req *plugin.CodeGenRequest, col *plugin.Column) string {
+func sqliteType(req *plugin.GenerateRequest, col *plugin.Column) string {
 	dt := strings.ToLower(sdk.DataType(col.Type))
 	notNull := col.NotNull || col.IsArray
 

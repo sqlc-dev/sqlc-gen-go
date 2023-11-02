@@ -6,73 +6,8 @@ import (
 	"strings"
 
 	"github.com/sqlc-dev/sqlc-go/pattern"
-	"buf.build/gen/go/sqlc/sqlc/protocolbuffers/go/protos/plugin"
+	"github.com/sqlc-dev/sqlc-go/plugin"
 )
-
-type PluginGoType struct {
-	ImportPath string
-	Package    string
-	TypeName   string
-	BasicType  bool
-	StructTags map[string]string
-}
-
-func pluginGoType(o *Override) *PluginGoType {
-	// Note that there is a slight mismatch between this and the
-	// proto api. The GoType on the override is the unparsed type,
-	// which could be a qualified path or an object, as per
-	// https://docs.sqlc.dev/en/v1.18.0/reference/config.html#type-overriding
-	return &PluginGoType{
-		ImportPath: o.GoImportPath,
-		Package:    o.GoPackage,
-		TypeName:   o.GoTypeName,
-		BasicType:  o.GoBasicType,
-		StructTags: o.GoStructTags,
-	}
-}
-
-type PluginOverride struct {
-	DbType     string
-	Nullable   bool
-	Column     string
-	Table      *plugin.Identifier
-	ColumnName string
-	Unsigned   bool
-	GoType     *PluginGoType
-}
-
-func pluginOverride(req *plugin.CodeGenRequest, o *Override) *PluginOverride {
-	var column string
-	var table plugin.Identifier
-
-	if o.Column != "" {
-		colParts := strings.Split(o.Column, ".")
-		switch len(colParts) {
-		case 2:
-			table.Schema = req.Catalog.DefaultSchema
-			table.Name = colParts[0]
-			column = colParts[1]
-		case 3:
-			table.Schema = colParts[0]
-			table.Name = colParts[1]
-			column = colParts[2]
-		case 4:
-			table.Catalog = colParts[0]
-			table.Schema = colParts[1]
-			table.Name = colParts[2]
-			column = colParts[3]
-		}
-	}
-	return &PluginOverride{
-		DbType:     o.DBType,
-		Nullable:   o.Nullable,
-		Unsigned:   o.Unsigned,
-		Column:     o.Column,
-		ColumnName: column,
-		Table:      &table,
-		GoType:     pluginGoType(o),
-	}
-}
 
 type Override struct {
 	// name of the golang type to use, e.g. `github.com/segmentio/ksuid.KSUID`
@@ -112,7 +47,7 @@ type Override struct {
 
 	// Parsed form of GoStructTag, e.g. {"validate:", "required"}
 	GoStructTags map[string]string `json:"-"`
-	Plugin       *PluginOverride   `json:"-"`
+	ShimOverride *ShimOverride     `json:"-"`
 }
 
 func (o *Override) Matches(n *plugin.Identifier, defaultSchema string) bool {
@@ -141,7 +76,7 @@ func (o *Override) Matches(n *plugin.Identifier, defaultSchema string) bool {
 	return true
 }
 
-func (o *Override) parse(req *plugin.CodeGenRequest) (err error) {
+func (o *Override) parse(req *plugin.GenerateRequest) (err error) {
 	// validate deprecated postgres_type field
 	if o.Deprecated_PostgresType != "" {
 		fmt.Fprintf(os.Stderr, "WARNING: \"postgres_type\" is deprecated. Instead, use \"db_type\" to specify a type override.\n")
@@ -229,6 +164,6 @@ func (o *Override) parse(req *plugin.CodeGenRequest) (err error) {
 	}
 	o.GoStructTags = tags
 
-	o.Plugin = pluginOverride(req, o)
+	o.ShimOverride = shimOverride(req, o)
 	return nil
 }

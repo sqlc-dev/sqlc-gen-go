@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
-	"buf.build/gen/go/sqlc/sqlc/protocolbuffers/go/protos/plugin"
+	"github.com/sqlc-dev/sqlc-go/plugin"
 )
 
 type Struct struct {

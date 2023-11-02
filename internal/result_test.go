@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/sqlc-dev/sqlc-go/metadata"
-	"buf.build/gen/go/sqlc/sqlc/protocolbuffers/go/protos/plugin"
+	"github.com/sqlc-dev/sqlc-go/plugin"
 )
 
 func TestPutOutColumns_ForZeroColumns(t *testing.T) {
