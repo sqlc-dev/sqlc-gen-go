@@ -1,21 +1,23 @@
 ## Usage
 
+> [!IMPORTANT]  
+> This repository is a read-only portion of https://github.com/sqlc-dev/sqlc.
+
 ```yaml
 version: '2'
 plugins:
-- name: py
+- name: golang
   wasm:
-    url: https://downloads.sqlc.dev/plugin/sqlc-gen-python_1.0.0.wasm
-    sha256: "FIXME"
+    url: "https://example.com"
+    sha256: ""
 sql:
-- schema: "schema.sql"
-  queries: "query.sql"
+- schema: schema.sql
+  queries: query.sql
   engine: postgresql
   codegen:
-  - out: src/authors
-    plugin: py
+  - plugin: golang
+    out: db
     options:
-      package: authors
-      emit_sync_querier: true
-      emit_async_querier: true
+      package: db
+      sql_package: pgx/v5
 ```
