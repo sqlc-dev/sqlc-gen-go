@@ -1,0 +1,16 @@
+version: '2'
+plugins:
+- name: golang
+  wasm:
+    url: file://../../../../bin/sqlc-gen-go.wasm
+    sha256: 841f3b108a637b18782f7a74a4ea3e0829e572ff8287f78effa02e17f389656c
+sql:
+- schema: schema.sql
+  queries: query.sql
+  engine: postgresql
+  codegen:
+  - plugin: golang
+    out: go
+    options:
+      package: querytest
+      sql_package: pgx/v5
