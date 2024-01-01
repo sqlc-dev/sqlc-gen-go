@@ -16,3 +16,6 @@ bin/sqlc-gen-go.wasm: bin/sqlc-gen-go
 
 bin:
 	mkdir -p bin
+
+server: bin/sqlc-gen-go
+	cd server && go build -o ../bin/server ./main.go
