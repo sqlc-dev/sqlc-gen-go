@@ -12,8 +12,8 @@ version: '2'
 plugins:
 - name: golang
   wasm:
-    url: https://downloads.sqlc.dev/plugin/sqlc-gen-go_1.1.0.wasm
-    sha256: 385754878be2403eddf79820659ffc30f72ad9c0ad01196bf337ac485ee54929
+    url: https://downloads.sqlc.dev/plugin/sqlc-gen-go_1.2.0.wasm
+    sha256: 965d73d22711eee3a210565e66f918b8cb831c5f5b612e680642a4a785dd1ca1
 sql:
 - schema: schema.sql
   queries: query.sql
@@ -84,8 +84,8 @@ version: 2
 plugins:
 - name: golang
   wasm:
-    url: "https://downloads.sqlc.dev/plugin/sqlc-gen-go_1.0.1.wasm"
-    sha256: "7aa8cd8c269822afa455ac4e7a56a0a12117512811a41f3457859770b315fc27"
+    url: "https://downloads.sqlc.dev/plugin/sqlc-gen-go_1.2.0.wasm"
+    sha256: "965d73d22711eee3a210565e66f918b8cb831c5f5b612e680642a4a785dd1ca1"
 sql:
 - schema: "query.sql"
   queries: "query.sql"
@@ -139,8 +139,8 @@ version: "2"
 plugins:
 - name: golang
   wasm:
-    url: "https://downloads.sqlc.dev/plugin/sqlc-gen-go_1.0.1.wasm"
-    sha256: "7aa8cd8c269822afa455ac4e7a56a0a12117512811a41f3457859770b315fc27"
+    url: "https://downloads.sqlc.dev/plugin/sqlc-gen-go_1.2.0.wasm"
+    sha256: "965d73d22711eee3a210565e66f918b8cb831c5f5b612e680642a4a785dd1ca1"
 options:
   golang:
     rename:
