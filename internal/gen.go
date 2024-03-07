@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"go/format"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -16,7 +17,7 @@ import (
 	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 )
 
-type tmplCtx struct {
+type TmplCtx struct {
 	Q           string
 	Package     string
 	SQLDriver   SQLDriver
@@ -26,7 +27,8 @@ type tmplCtx struct {
 	SqlcVersion string
 
 	// TODO: Race conditions
-	SourceName string
+	SourceName    string
+	InterfaceName string
 
 	EmitJSONTags              bool
 	JsonTagsIDUppercase       bool
@@ -43,11 +45,11 @@ type tmplCtx struct {
 	BuildTags                 string
 }
 
-func (t *tmplCtx) OutputQuery(sourceName string) bool {
+func (t *TmplCtx) OutputQuery(sourceName string) bool {
 	return t.SourceName == sourceName
 }
 
-func (t *tmplCtx) codegenDbarg() string {
+func (t *TmplCtx) codegenDbarg() string {
 	if t.EmitMethodsWithDBArgument {
 		return "db DBTX, "
 	}
@@ -55,25 +57,26 @@ func (t *tmplCtx) codegenDbarg() string {
 }
 
 // Called as a global method since subtemplate queryCodeStdExec does not have
-// access to the toplevel tmplCtx
-func (t *tmplCtx) codegenEmitPreparedQueries() bool {
+// access to the toplevel TmplCtx
+func (t *TmplCtx) codegenEmitPreparedQueries() bool {
 	return t.EmitPreparedQueries
 }
 
-func (t *tmplCtx) codegenQueryMethod(q Query) string {
+func (t *TmplCtx) codegenQueryMethod(q Query) string {
 	db := "q.db"
 	if t.EmitMethodsWithDBArgument {
 		db = "db"
 	}
 
 	switch q.Cmd {
-	case ":one":
-		if t.EmitPreparedQueries {
-			return "q.queryRow"
-		}
-		return db + ".QueryRowContext"
+	//case ":one":
+	//	if t.EmitPreparedQueries {
+	//		return "q.queryRow"
+	//	}
+	//	return db + ".QueryRowContext"
 
-	case ":many":
+	// smartpass: treat :many and :one the same so that dbr.Load works
+	case ":many", ":one":
 		if t.EmitPreparedQueries {
 			return "q.query"
 		}
@@ -87,11 +90,12 @@ func (t *tmplCtx) codegenQueryMethod(q Query) string {
 	}
 }
 
-func (t *tmplCtx) codegenQueryRetval(q Query) (string, error) {
+func (t *TmplCtx) codegenQueryRetval(q Query) (string, error) {
 	switch q.Cmd {
-	case ":one":
-		return "row :=", nil
-	case ":many":
+	//case ":one":
+	//	return "row :=", nil
+	// smartpass: treat :many and :one the same so that dbr.Load works
+	case ":many", ":one":
 		return "rows, err :=", nil
 	case ":exec":
 		return "_, err :=", nil
@@ -167,7 +171,7 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		Structs: structs,
 	}
 
-	tctx := tmplCtx{
+	tctx := TmplCtx{
 		EmitInterface:             options.EmitInterface,
 		EmitJSONTags:              options.EmitJsonTags,
 		JsonTagsIDUppercase:       options.JsonTagsIdUppercase,
@@ -238,6 +242,13 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		var b bytes.Buffer
 		w := bufio.NewWriter(&b)
 		tctx.SourceName = name
+		nameWithoutExt := name[:len(name)-len(filepath.Ext(name))]
+		iName := toPascalCase(nameWithoutExt)
+		tctx.InterfaceName = iName
+		for i := range replacedQueries {
+			replacedQueries[i].InterfaceName = iName
+		}
+
 		tctx.GoQueries = replacedQueries
 		err := tmpl.ExecuteTemplate(w, templateName, &tctx)
 		w.Flush()

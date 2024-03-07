@@ -38,7 +38,7 @@ func postgresType(req *plugin.GenerateRequest, options *opts.Options, col *plugi
 	columnType := sdk.DataType(col.Type)
 	notNull := col.NotNull || col.IsArray
 	driver := parseDriver(options.SqlPackage)
-	emitPointersForNull := driver.IsPGX() && options.EmitPointersForNullTypes
+	emitPointersForNull := options.EmitPointersForNullTypes
 
 	switch columnType {
 	case "serial", "serial4", "pg_catalog.serial4":

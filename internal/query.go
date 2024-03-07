@@ -101,9 +101,6 @@ func (v *QueryValue) DefineType() string {
 }
 
 func (v *QueryValue) ReturnName() string {
-	if v.IsPointer() {
-		return "&" + escape(v.Name)
-	}
 	return escape(v.Name)
 }
 
@@ -255,15 +252,16 @@ func (v QueryValue) VariableForField(f Field) string {
 
 // A struct used to generate methods and fields on the Queries struct
 type Query struct {
-	Cmd          string
-	Comments     []string
-	MethodName   string
-	FieldName    string
-	ConstantName string
-	SQL          string
-	SourceName   string
-	Ret          QueryValue
-	Arg          QueryValue
+	Cmd           string
+	Comments      []string
+	MethodName    string
+	FieldName     string
+	ConstantName  string
+	SQL           string
+	SourceName    string
+	InterfaceName string
+	Ret           QueryValue
+	Arg           QueryValue
 	// Used for :copyfrom
 	Table *plugin.Identifier
 }
@@ -272,6 +270,10 @@ func (q Query) hasRetType() bool {
 	scanned := q.Cmd == metadata.CmdOne || q.Cmd == metadata.CmdMany ||
 		q.Cmd == metadata.CmdBatchMany || q.Cmd == metadata.CmdBatchOne
 	return scanned && !q.Ret.isEmpty()
+}
+
+func (q Query) ShortMethodName() string {
+	return strings.TrimPrefix(q.MethodName, q.InterfaceName)
 }
 
 func (q Query) TableIdentifierAsGoSlice() string {
