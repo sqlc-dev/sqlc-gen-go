@@ -190,6 +190,9 @@ func (q *{{$.InterfaceName}}RepositoryImpl) {{.ShortMethodName}}(ctx context.Con
 	{{- if or (ne .Arg.Pair .Ret.Pair) (ne .Arg.DefineType .Ret.DefineType) }}
 	var {{.Ret.Name}} {{.Ret.DefineType}}
 	{{- end}}
+    if err != nil {
+        return {{.Ret.ReturnName}}, err
+    }
 	_, err = dbr.Load(rows, &{{.Ret.Name}})
 	return {{.Ret.ReturnName}}, err
 }
