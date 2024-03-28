@@ -3,9 +3,9 @@ package golang
 import (
 	"strings"
 
-	"github.com/sqlc-dev/plugin-sdk-go/plugin"
-	"github.com/sqlc-dev/plugin-sdk-go/sdk"
 	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
+	"github.com/sqlc-dev/plugin-sdk-go/sdk"
+	"github.com/sqlc-dev/plugin-sdk-go/plugin"
 )
 
 func addExtraGoStructTags(tags map[string]string, req *plugin.GenerateRequest, options *opts.Options, col *plugin.Column) {

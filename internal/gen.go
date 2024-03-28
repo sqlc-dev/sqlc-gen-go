@@ -10,16 +10,16 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
+	"github.com/sqlc-dev/plugin-sdk-go/sdk"
 	"github.com/sqlc-dev/plugin-sdk-go/metadata"
 	"github.com/sqlc-dev/plugin-sdk-go/plugin"
-	"github.com/sqlc-dev/plugin-sdk-go/sdk"
-	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 )
 
 type tmplCtx struct {
 	Q           string
 	Package     string
-	SQLDriver   SQLDriver
+	SQLDriver   opts.SQLDriver
 	Enums       []Enum
 	Structs     []Struct
 	GoQueries   []Query
@@ -189,15 +189,15 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		OmitSqlcVersion:           options.OmitSqlcVersion,
 	}
 
-	if tctx.UsesCopyFrom && !tctx.SQLDriver.IsPGX() && options.SqlDriver != SQLDriverGoSQLDriverMySQL {
+	if tctx.UsesCopyFrom && !tctx.SQLDriver.IsPGX() && options.SqlDriver != opts.SQLDriverGoSQLDriverMySQL {
 		return nil, errors.New(":copyfrom is only supported by pgx and github.com/go-sql-driver/mysql")
 	}
 
-	if tctx.UsesCopyFrom && options.SqlDriver == SQLDriverGoSQLDriverMySQL {
+	if tctx.UsesCopyFrom && options.SqlDriver == opts.SQLDriverGoSQLDriverMySQL {
 		if err := checkNoTimesForMySQLCopyFrom(queries); err != nil {
 			return nil, err
 		}
-		tctx.SQLDriver = SQLDriverGoSQLDriverMySQL
+		tctx.SQLDriver = opts.SQLDriverGoSQLDriverMySQL
 	}
 
 	if tctx.UsesBatch && !tctx.SQLDriver.IsPGX() {
@@ -209,6 +209,7 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		"comment":    sdk.DoubleSlashComment,
 		"escape":     sdk.EscapeBacktick,
 		"imports":    i.Imports,
+		"hasImports": i.HasImports,
 		"hasPrefix":  strings.HasPrefix,
 
 		// These methods are Go specific, they do not belong in the codegen package
