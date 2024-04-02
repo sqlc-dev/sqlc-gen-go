@@ -58,9 +58,35 @@ func goType(req *plugin.GenerateRequest, options *opts.Options, col *plugin.Colu
 		return "[]" + typ
 	}
 	if col.IsArray {
+		if col.ArrayDims == 1 {
+			// SmartPass addition
+			// If the column is a slice, use the pq equivalent array type.
+			return getPqArrayType(typ)
+		}
 		return strings.Repeat("[]", int(col.ArrayDims)) + typ
 	}
 	return typ
+}
+
+func getPqArrayType(goInnerType string) string {
+	switch goInnerType {
+	case "bool":
+		return "pq.BoolArray"
+	case "float64":
+		return "pq.Float64Array"
+	case "float32":
+		return "pq.Float32Array"
+	case "int64":
+		return "pq.Int64Array"
+	case "int32":
+		return "pq.Int32Array"
+	case "string":
+		return "pq.StringArray"
+	case "[]byte":
+		return "pq.ByteaArray"
+	default:
+		return "pq.GenericArray"
+	}
 }
 
 func goInnerType(req *plugin.GenerateRequest, options *opts.Options, col *plugin.Column) string {

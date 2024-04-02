@@ -224,6 +224,10 @@ func buildImports(options *opts.Options, queries []Query, uses func(string) bool
 		pkg[ImportSpec{Path: "github.com/pgvector/pgvector-go"}] = struct{}{}
 	}
 
+	if uses("pq.") {
+		pkg[ImportSpec{Path: "github.com/lib/pq"}] = struct{}{}
+	}
+
 	// Custom imports
 	for _, override := range options.Overrides {
 		o := override.ShimOverride
