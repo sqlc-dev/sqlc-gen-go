@@ -1,9 +1,45 @@
 # sqlc-gen-go
 
-> [!IMPORTANT]  
-> This repository is read-only. It contains a working Go codegen plugin extracted from https://github.com/sqlc-dev/sqlc which you can fork and modify to meet your needs.
-
 See [Building from source](#building-from-source) and [Migrating from sqlc's built-in Go codegen](#migrating-from-sqlcs-built-in-go-codegen) if you want to use a modified fork in your project.
+
+## Fork purpose
+This is a fork of the original sqlc-gen-go plugin that adds the ability to change the default schema.
+Imagine that you have a database with multiple schemas one per your module in code. 
+Each module has its own set of entity names. 
+
+For example, you have a module `auth` 
+that has entities like AccessToken, RefreshToken, etc. 
+All these entities are stored in the `auth` schema in the database.
+
+By default, sqlc-gen-go generates code for this module with the prefix Auth, for example, AuthAccessToken, AuthRefreshToken, etc.
+
+If you want to delete a prefix, you can use the `default_schema` option in the plugin configuration.
+
+```yaml
+version: '2'
+plugins:
+  - name: golang
+    process:
+      cmd: "../sqlc-gen-go/bin/sqlc-gen-go"
+    env:
+      - DUMP_REQUEST_FILE
+sql:
+  - schema:
+      - "migration"
+      - "../types/migration"
+    queries: "queries"
+    engine: "postgresql"
+    codegen:
+      - plugin: golang
+        out: "./"
+        options:
+          package: "storage"
+          sql_package: "pgx/v4"
+          out: "./"
+          default_schema: "auth"
+```
+
+In this case, the current fork of the plugin will generate code without the Auth prefix.
 
 ## Usage
 

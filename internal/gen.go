@@ -10,10 +10,10 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
-	"github.com/sqlc-dev/plugin-sdk-go/sdk"
 	"github.com/sqlc-dev/plugin-sdk-go/metadata"
 	"github.com/sqlc-dev/plugin-sdk-go/plugin"
+	"github.com/sqlc-dev/plugin-sdk-go/sdk"
+	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 )
 
 type tmplCtx struct {
@@ -114,6 +114,9 @@ func Generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 		return nil, err
 	}
 
+	if options.DefaultSchema != "" {
+		req.Catalog.DefaultSchema = options.DefaultSchema
+	}
 	enums := buildEnums(req, options)
 	structs := buildStructs(req, options)
 	queries, err := buildQueries(req, options, structs)
@@ -159,7 +162,13 @@ func validate(options *opts.Options, enums []Enum, structs []Struct, queries []Q
 	return nil
 }
 
-func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, structs []Struct, queries []Query) (*plugin.GenerateResponse, error) {
+func generate(
+	req *plugin.GenerateRequest,
+	options *opts.Options,
+	enums []Enum,
+	structs []Struct,
+	queries []Query,
+) (*plugin.GenerateResponse, error) {
 	i := &importer{
 		Options: options,
 		Queries: queries,
@@ -319,10 +328,12 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 	resp := plugin.GenerateResponse{}
 
 	for filename, code := range output {
-		resp.Files = append(resp.Files, &plugin.File{
-			Name:     filename,
-			Contents: []byte(code),
-		})
+		resp.Files = append(
+			resp.Files, &plugin.File{
+				Name:     filename,
+				Contents: []byte(code),
+			},
+		)
 	}
 
 	return &resp, nil

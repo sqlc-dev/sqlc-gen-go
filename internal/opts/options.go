@@ -43,6 +43,7 @@ type Options struct {
 	OmitSqlcVersion             bool              `json:"omit_sqlc_version,omitempty" yaml:"omit_sqlc_version"`
 	OmitUnusedStructs           bool              `json:"omit_unused_structs,omitempty" yaml:"omit_unused_structs"`
 	BuildTags                   string            `json:"build_tags,omitempty" yaml:"build_tags"`
+	DefaultSchema               string            `json:"default_schema,omitempty" yaml:"default_schema"`
 }
 
 type GlobalOptions struct {
