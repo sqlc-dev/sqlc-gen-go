@@ -19,10 +19,9 @@ If you want to delete a prefix, you can use the `default_schema` option in the p
 version: '2'
 plugins:
   - name: golang
-    process:
-      cmd: "../sqlc-gen-go/bin/sqlc-gen-go"
-    env:
-      - DUMP_REQUEST_FILE
+    wasm:
+      url: "https://github.com/debugger84/sqlc-gen-go/releases/download/v1.3.1/sqlc-gen-go.wasm"
+      sha256: "fe6e5a2b75153ecba02b0c30bf4a11db2120bef537b650299473da133d272bf4"
 sql:
   - schema:
       - "migration"
@@ -40,6 +39,28 @@ sql:
 ```
 
 In this case, the current fork of the plugin will generate code without the Auth prefix.
+
+
+The second feature is the ability to debug the SQL code generation process.
+If you want to debug the plugin follow the next steps:
+1. Use the `process` option in the plugin configuration instead of wasm. 
+Also, you need to send the `DUMP_REQUEST_FILE` environment variable, adding the env parameter to yaml. 
+```yaml
+version: '2'
+plugins:
+  - name: golang
+    process:
+      cmd: "../sqlc-gen-go/bin/sqlc-gen-go"
+    env:
+      - DUMP_REQUEST_FILE
+```
+2. Run the sqlc command with the `DUMP_REQUEST_FILE` environment variable.
+```bash
+DUMP_REQUEST_FILE=/tmp/1234 sqlc generate
+```
+3. The plugin will generate the request file in the specified directory.
+4. Configure your Goland IDE to run the plugin project with the env variable. Fill the field in Run\Debug Configurations->your configuration->Environment field with the value RESTORE_REQUEST_FILE=/tmp/1234
+5. Put a breakpoint everywhere you want, run the project in Debug mode, and enjoy the debugging process.
 
 ## Usage
 
