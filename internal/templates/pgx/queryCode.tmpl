@@ -1,10 +1,16 @@
 {{define "queryCodePgx"}}
 {{range .GoQueries}}
+{{- /*gotype:github.com/sqlc-dev/sqlc-gen-go/internal.Query*/ -}}
 {{if $.OutputQuery .SourceName}}
 {{if and (ne .Cmd ":copyfrom") (ne (hasPrefix .Cmd ":batch") true)}}
 const {{.ConstantName}} = {{$.Q}}-- name: {{.MethodName}} {{.Cmd}}
-{{escape .SQL}}
+{{ if .Paginated}}{{escape .SQLPaginated}}{{ else }}{{escape .SQL}}{{end -}}
 {{$.Q}}
+{{ if .Paginated}}
+const {{.ConstantName}}Total = {{$.Q}}
+{{escape .SQLTotal}}
+{{$.Q}}
+{{- end -}}
 {{end}}
 
 {{if ne (hasPrefix .Cmd ":batch") true}}
@@ -45,14 +51,14 @@ func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) ({{.Ret.De
 {{range .Comments}}//{{.}}
 {{end -}}
 {{- if $.EmitMethodsWithDBArgument -}}
-func (q *Queries) {{.MethodName}}(ctx context.Context, db DBTX, {{.Arg.Pair}}) ([]{{.Ret.DefineType}}, error) {
-	rows, err := db.Query(ctx, {{.ConstantName}}, {{.Arg.Params}})
+func (q *Queries) {{.MethodName}}(ctx context.Context, db DBTX, {{.Arg.Pair}}) ({{ if .Paginated}}{{.Ret.DefineType}}Page{{ else }}[]{{.Ret.DefineType}}{{ end }}, error) {
+	rows, err := db.Query(ctx, {{.ConstantName}}, {{ if .Paginated}}{{.Arg.PagedParams}}{{ else }}{{.Arg.Params}}{{ end }})
 {{- else -}}
-func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) ([]{{.Ret.DefineType}}, error) {
-	rows, err := q.db.Query(ctx, {{.ConstantName}}, {{.Arg.Params}})
+func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) ({{ if .Paginated}}{{.Ret.DefineType}}Page{{ else }}[]{{.Ret.DefineType}}{{ end }}, error) {
+	rows, err := q.db.Query(ctx, {{.ConstantName}}, {{ if .Paginated}}{{.Arg.PagedParams}}{{ else }}{{.Arg.Params}}{{ end }})
 {{- end}}
 	if err != nil {
-		return nil, err
+		return {{ if .Paginated}}{{.Ret.DefineType}}Page{}{{ else }}nil{{ end }}, err
 	}
 	defer rows.Close()
 	{{- if $.EmitEmptySlices}}
@@ -63,14 +69,26 @@ func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) ([]{{.Ret.
 	for rows.Next() {
 		var {{.Ret.Name}} {{.Ret.Type}}
 		if err := rows.Scan({{.Ret.Scan}}); err != nil {
-			return nil, err
+			return {{ if .Paginated}}{{.Ret.DefineType}}Page{}{{ else }}nil{{ end }}, err
 		}
 		items = append(items, {{.Ret.ReturnName}})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return {{ if .Paginated}}{{.Ret.DefineType}}Page{}{{ else }}nil{{ end }}, err
 	}
+{{- if .Paginated}}
+	var total int
+	if err := q.db.QueryRow(ctx, {{.ConstantName}}Total, {{.Arg.ParamsTotal}}).Scan(&total); err != nil {
+		return {{.Ret.DefineType}}Page{}, err
+	}
+	limit := int({{.Arg.Name}}.Limit)
+	if limit > len(items) {
+		limit = len(items)
+	}
+	return {{.Ret.DefineType}}Page{Items: items[:limit], HasNext: len(items) > int({{.Arg.Name}}.Limit), Total: total}, nil
+{{- else }}
 	return items, nil
+{{- end}}
 }
 {{end}}
 

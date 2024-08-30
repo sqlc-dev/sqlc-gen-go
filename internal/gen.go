@@ -123,7 +123,7 @@ func Generate(ctx context.Context, req *plugin.GenerateRequest) (*plugin.Generat
 	if err != nil {
 		return nil, err
 	}
-
+	structs = addPageTypesToStructs(structs, queries)
 	if options.OmitUnusedStructs {
 		enums, structs = filterUnusedStructs(enums, structs, queries)
 	}
