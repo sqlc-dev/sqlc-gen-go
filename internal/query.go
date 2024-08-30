@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 	"github.com/sqlc-dev/plugin-sdk-go/metadata"
 	"github.com/sqlc-dev/plugin-sdk-go/plugin"
+	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 )
 
 type QueryValue struct {
@@ -61,10 +61,12 @@ func (v QueryValue) Pairs() []Argument {
 	if !v.EmitStruct() && v.IsStruct() {
 		var out []Argument
 		for _, f := range v.Struct.Fields {
-			out = append(out, Argument{
-				Name: escape(toLowerCase(f.Name)),
-				Type: f.Type,
-			})
+			out = append(
+				out, Argument{
+					Name: escape(toLowerCase(f.Name)),
+					Type: f.Type,
+				},
+			)
 		}
 		return out
 	}
@@ -136,6 +138,67 @@ func (v QueryValue) Params() string {
 		}
 	} else {
 		for _, f := range v.Struct.Fields {
+			if !f.HasSqlcSlice() && strings.HasPrefix(f.Type, "[]") && f.Type != "[]byte" && !v.SQLDriver.IsPGX() {
+				out = append(out, "pq.Array("+escape(v.VariableForField(f))+")")
+			} else {
+				out = append(out, escape(v.VariableForField(f)))
+			}
+		}
+	}
+	if len(out) <= 3 {
+		return strings.Join(out, ",")
+	}
+	out = append(out, "")
+	return "\n" + strings.Join(out, ",\n")
+}
+
+func (v QueryValue) PagedParams() string {
+	if v.isEmpty() {
+		return ""
+	}
+	var out []string
+	if v.Struct == nil {
+		if !v.Column.IsSqlcSlice && strings.HasPrefix(v.Typ, "[]") && v.Typ != "[]byte" && !v.SQLDriver.IsPGX() {
+			out = append(out, "pq.Array("+escape(v.Name)+")")
+		} else {
+			out = append(out, escape(v.Name))
+		}
+	} else {
+		for _, f := range v.Struct.Fields {
+			if !f.HasSqlcSlice() && strings.HasPrefix(f.Type, "[]") && f.Type != "[]byte" && !v.SQLDriver.IsPGX() {
+				out = append(out, "pq.Array("+escape(v.VariableForField(f))+")")
+			} else {
+				if f.Name == "Limit" {
+					out = append(out, escape(v.VariableForField(f))+"+1")
+					continue
+				}
+				out = append(out, escape(v.VariableForField(f)))
+			}
+		}
+	}
+	if len(out) <= 3 {
+		return strings.Join(out, ",")
+	}
+	out = append(out, "")
+	return "\n" + strings.Join(out, ",\n")
+}
+
+func (v QueryValue) ParamsTotal() string {
+	if v.isEmpty() {
+		return ""
+	}
+	var out []string
+	if v.Struct == nil {
+		if !v.Column.IsSqlcSlice && strings.HasPrefix(v.Typ, "[]") && v.Typ != "[]byte" && !v.SQLDriver.IsPGX() {
+			out = append(out, "pq.Array("+escape(v.Name)+")")
+		} else {
+			out = append(out, escape(v.Name))
+		}
+	} else {
+		for _, f := range v.Struct.Fields {
+			if f.Name == "Limit" || f.Name == "Offset" {
+				continue
+			}
 			if !f.HasSqlcSlice() && strings.HasPrefix(f.Type, "[]") && f.Type != "[]byte" && !v.SQLDriver.IsPGX() {
 				out = append(out, "pq.Array("+escape(v.VariableForField(f))+")")
 			} else {
@@ -262,9 +325,12 @@ type Query struct {
 	FieldName    string
 	ConstantName string
 	SQL          string
+	SQLPaginated string
 	SourceName   string
 	Ret          QueryValue
 	Arg          QueryValue
+	Paginated    bool
+
 	// Used for :copyfrom
 	Table *plugin.Identifier
 }
@@ -293,4 +359,11 @@ func (q Query) TableIdentifierForMySQL() string {
 		}
 	}
 	return strings.Join(escapedNames, ".")
+}
+
+func (q Query) SQLTotal() string {
+	if q.Paginated {
+		return fmt.Sprintf("SELECT count(*) as c FROM (%s) as total_res LIMIT 1", q.SQL)
+	}
+	return ""
 }
