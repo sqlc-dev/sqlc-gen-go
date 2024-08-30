@@ -515,3 +515,52 @@ func checkIncompatibleFieldTypes(fields []Field) error {
 	}
 	return nil
 }
+
+func addPageTypesToStructs(structs []Struct, queries []Query) []Struct {
+	for _, q := range queries {
+		if q.Paginated && q.Ret.Struct != nil {
+			structs = addPageStruct(*q.Ret.Struct, structs)
+		}
+	}
+	return structs
+}
+
+func addPageStruct(original Struct, structs []Struct) []Struct {
+	pageName := original.Name + "Page"
+	for _, s := range structs {
+		if s.Name == pageName {
+			return structs
+		}
+	}
+	pageStruct := Struct{
+		Name:    pageName,
+		Comment: original.Comment,
+		Fields: []Field{
+			{
+				Name:    "Items",
+				DBName:  "",
+				Type:    "[]" + original.Name,
+				Comment: "",
+				Column: &plugin.Column{
+					Name:    "items",
+					NotNull: true,
+					IsArray: true,
+					Type:    &plugin.Identifier{Name: original.Name},
+				},
+				EmbedFields: nil,
+			},
+			{
+				Name:   "Total",
+				DBName: "",
+				Type:   "int",
+			},
+			{
+				Name:   "HasNext",
+				DBName: "",
+				Type:   "bool",
+			},
+		},
+	}
+	structs = append(structs, pageStruct)
+	return structs
+}

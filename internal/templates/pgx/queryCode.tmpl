@@ -28,13 +28,6 @@ type {{.Ret.Type}} struct { {{- range .Ret.Struct.Fields}}
 }
 {{end}}
 {{end}}
-{{- if .Paginated}}
-type {{.Ret.Type}}Page struct {
-	Items []{{.Ret.Struct.Name}}
-	HasNext bool
-	Total int
-}
-{{end -}}
 
 {{if eq .Cmd ":one"}}
 {{range .Comments}}//{{.}}
@@ -88,7 +81,11 @@ func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) ({{ if .Pa
 	if err := q.db.QueryRow(ctx, {{.ConstantName}}Total, {{.Arg.ParamsTotal}}).Scan(&total); err != nil {
 		return {{.Ret.DefineType}}Page{}, err
 	}
-	return {{.Ret.DefineType}}Page{Items: items[:int({{.Arg.Name}}.Limit)], HasNext: len(items) > int({{.Arg.Name}}.Limit), Total: total}, nil
+	limit := int({{.Arg.Name}}.Limit)
+	if limit > len(items) {
+		limit = len(items)
+	}
+	return {{.Ret.DefineType}}Page{Items: items[:limit], HasNext: len(items) > int({{.Arg.Name}}.Limit), Total: total}, nil
 {{- else }}
 	return items, nil
 {{- end}}
