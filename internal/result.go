@@ -3,6 +3,7 @@ package golang
 import (
 	"bufio"
 	"fmt"
+	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 	"regexp"
 	"sort"
 	"strings"
@@ -11,11 +12,12 @@ import (
 	"github.com/sqlc-dev/plugin-sdk-go/plugin"
 	"github.com/sqlc-dev/plugin-sdk-go/sdk"
 	"github.com/sqlc-dev/sqlc-gen-go/internal/inflection"
-	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 )
 
-var queryHasLimitRegexp = regexp.MustCompile(`/\s+limit\s+/i`)
-var queryHasOffsetRegexp = regexp.MustCompile(`/\s+offset\s+/i`)
+var queryHasLimitRegexp = regexp.MustCompile(`(?i)\s+limit\s+`)
+var queryHasOffsetRegexp = regexp.MustCompile(`(?i)\s+offset\s+`)
+
+var regexpOrderBy = regexp.MustCompile(`(?i)\s+order\s+by\s`)
 
 func buildEnums(req *plugin.GenerateRequest, options *opts.Options) []Enum {
 	var enums []Enum
@@ -210,25 +212,12 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, structs []
 			constantName = sdk.LowerTitle(query.Name)
 		}
 
-		comments := query.Comments
-		paginated := false
-		for i, comment := range comments {
-			comment = strings.TrimSpace(comment)
-			if strings.HasPrefix(comment, "paginated") {
-				paginated = true
-				comments = append(comments[:i], comments[i+1:]...)
-				break
-			}
+		paginated, cursorPagination, paginationComment, err := getPaginationFlags(query)
+		if err != nil {
+			return nil, err
 		}
-		if paginated && query.Cmd != metadata.CmdMany {
-			return nil, fmt.Errorf("query %s is marked as paginated but is not a :many query", query.Name)
-		}
-		if paginated && queryHasLimitRegexp.MatchString(query.Text) {
-			return nil, fmt.Errorf("using LIMIT in paginated query %s is forbidden", query.Name)
-		}
-		if paginated && queryHasOffsetRegexp.MatchString(query.Text) {
-			return nil, fmt.Errorf("using OFFSET in paginated query %s is forbidden", query.Name)
-		}
+
+		comments := removeServiceComments(query.Comments)
 		if options.EmitSqlAsComment {
 			if len(comments) == 0 {
 				comments = append(comments, query.Name)
@@ -245,46 +234,23 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, structs []
 		}
 
 		gq := Query{
-			Cmd:          query.Cmd,
-			ConstantName: constantName,
-			FieldName:    sdk.LowerTitle(query.Name) + "Stmt",
-			MethodName:   query.Name,
-			SourceName:   query.Filename,
-			SQL:          query.Text,
-			Comments:     comments,
-			Table:        query.InsertIntoTable,
-			Paginated:    paginated,
+			Cmd:              query.Cmd,
+			ConstantName:     constantName,
+			FieldName:        sdk.LowerTitle(query.Name) + "Stmt",
+			MethodName:       query.Name,
+			SourceName:       query.Filename,
+			SQL:              query.Text,
+			Comments:         comments,
+			Table:            query.InsertIntoTable,
+			Paginated:        paginated,
+			CursorPagination: cursorPagination,
 		}
 		sqlpkg := parseDriver(options.SqlPackage)
 
 		qpl := int(*options.QueryParameterLimit)
 
 		if paginated {
-			number := int32(len(query.Params) + 1)
-			gq.SQLPaginated = fmt.Sprintf("%s LIMIT $%d OFFSET $%d", gq.SQL, number, number+1)
-			query.Params = append(
-				query.Params, &plugin.Parameter{
-					Number: number,
-					Column: &plugin.Column{
-						Name:         "limit",
-						NotNull:      true,
-						IsNamedParam: true,
-						Type: &plugin.Identifier{
-							Name: "int",
-						},
-					},
-				}, &plugin.Parameter{
-					Number: number + 1,
-					Column: &plugin.Column{
-						Name:         "offset",
-						NotNull:      true,
-						IsNamedParam: true,
-						Type: &plugin.Identifier{
-							Name: "int",
-						},
-					},
-				},
-			)
+			query.Params = append(query.Params, getPaginationParams(cursorPagination, len(query.Params))...)
 		}
 
 		if len(query.Params) == 1 && qpl != 0 {
@@ -344,6 +310,7 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, structs []
 					continue
 				}
 				same := true
+				fieldsWithColumns := make([]Field, len(query.Columns))
 				for i, f := range s.Fields {
 					c := query.Columns[i]
 					sameName := f.Name == StructName(columnName(c, i), options)
@@ -351,9 +318,14 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, structs []
 					sameTable := sdk.SameTableName(c.Table, s.Table, req.Catalog.DefaultSchema)
 					if !sameName || !sameType || !sameTable {
 						same = false
+						break
 					}
+					f.Column = c
+					f.DBName = c.GetName()
+					fieldsWithColumns[i] = f
 				}
 				if same {
+					s.Fields = fieldsWithColumns
 					gs = &s
 					break
 				}
@@ -386,9 +358,23 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, structs []
 			}
 		}
 
+		// pagination
+		if gq.Paginated {
+			if !gq.CursorPagination {
+				gq.SQLPaginated = getOffsetPaginationSql(gq)
+			} else {
+				cursorFields, err := parseCursorFields(paginationComment, gq)
+				if err != nil {
+					return nil, err
+				}
+				gq.CursorFields = cursorFields
+				gq.SQLPaginated = getCursorPaginationSql(gq, cursorFields)
+			}
+		}
 		qs = append(qs, gq)
 	}
 	sort.Slice(qs, func(i, j int) bool { return qs[i].MethodName < qs[j].MethodName })
+
 	return qs, nil
 }
 
@@ -519,7 +505,11 @@ func checkIncompatibleFieldTypes(fields []Field) error {
 func addPageTypesToStructs(structs []Struct, queries []Query) []Struct {
 	for _, q := range queries {
 		if q.Paginated && q.Ret.Struct != nil {
-			structs = addPageStruct(*q.Ret.Struct, structs)
+			if q.CursorPagination {
+				structs = addConnectionStruct(*q.Ret.Struct, structs, q.CursorFields)
+			} else {
+				structs = addPageStruct(*q.Ret.Struct, structs)
+			}
 		}
 	}
 	return structs
@@ -533,8 +523,7 @@ func addPageStruct(original Struct, structs []Struct) []Struct {
 		}
 	}
 	pageStruct := Struct{
-		Name:    pageName,
-		Comment: original.Comment,
+		Name: pageName,
 		Fields: []Field{
 			{
 				Name:    "Items",
@@ -563,4 +552,333 @@ func addPageStruct(original Struct, structs []Struct) []Struct {
 	}
 	structs = append(structs, pageStruct)
 	return structs
+}
+
+func addConnectionStruct(original Struct, structs []Struct, cursorFields []CursorField) []Struct {
+	connectionName := original.Name + "Connection"
+	edgeName := original.Name + "Edge"
+	hasPageInfo := false
+	for _, s := range structs {
+		if s.Name == connectionName {
+			return structs
+		}
+		if s.Name == "PageInfo" {
+			hasPageInfo = true
+		}
+	}
+
+	edgeStruct := Struct{
+		Name: edgeName,
+		Fields: []Field{
+			{
+				Name: "Node",
+				Type: original.Name,
+				Column: &plugin.Column{
+					Name:    "node",
+					NotNull: true,
+					IsArray: false,
+					Type:    &plugin.Identifier{Name: original.Name},
+				},
+			},
+			{
+				Name: "Cursor",
+				Type: "string",
+				Column: &plugin.Column{
+					Name:    "cursor",
+					NotNull: true,
+					IsArray: false,
+					Type:    &plugin.Identifier{Name: "string"},
+				},
+			},
+		},
+	}
+
+	connectionStruct := Struct{
+		Name: connectionName,
+		Fields: []Field{
+			{
+				Name:    "Edges",
+				DBName:  "",
+				Type:    "[]" + edgeName,
+				Comment: "",
+				Column: &plugin.Column{
+					Name:    "edges",
+					NotNull: true,
+					IsArray: true,
+					Type:    &plugin.Identifier{Name: edgeName},
+				},
+				EmbedFields: nil,
+			},
+			{
+				Name:   "PageInfo",
+				DBName: "",
+				Type:   "PageInfo",
+				Column: &plugin.Column{
+					Name:    "pageInfo",
+					NotNull: true,
+					IsArray: false,
+					Type:    &plugin.Identifier{Name: "PageInfo"},
+				},
+			},
+		},
+	}
+
+	if !hasPageInfo {
+		pageInfoStruct := Struct{
+			Name: "PageInfo",
+			Fields: []Field{
+				{
+					Name:   "StartCursor",
+					DBName: "",
+					Type:   "string",
+				},
+				{
+					Name:   "EndCursor",
+					DBName: "",
+					Type:   "string",
+				},
+				{
+					Name:   "HasNextPage",
+					DBName: "",
+					Type:   "bool",
+				},
+				{
+					Name:   "HasPreviousPage",
+					DBName: "",
+					Type:   "bool",
+				},
+			},
+		}
+		structs = append(structs, pageInfoStruct)
+	}
+
+	cursorStruct := Struct{
+		Name:   sdk.LowerTitle(original.Name) + "Cursor",
+		Fields: make([]Field, 0, len(cursorFields)),
+	}
+
+	for _, cursorField := range cursorFields {
+		cursorStruct.Fields = append(cursorStruct.Fields, cursorField.Field)
+	}
+
+	structs = append(structs, connectionStruct, edgeStruct, cursorStruct)
+	return structs
+}
+
+func parseCursorFields(comment string, query Query) ([]CursorField, error) {
+	paramsParts := strings.Split(comment, "cursor:")
+	if len(paramsParts) != 2 {
+		return nil, fmt.Errorf(
+			"%s: invalid cursor comment (%s): it should have 'cursor:' substring (e.g. -- paginated: cursor:-created_at,id)",
+			query.MethodName,
+			comment,
+		)
+	}
+	comment = paramsParts[1]
+	parts := strings.Split(comment, ",")
+	params := make([]CursorField, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		isAsc := true
+		if strings.HasPrefix(part, "-") {
+			isAsc = false
+			part = part[1:]
+		}
+		if query.Ret.Struct == nil {
+			return nil, fmt.Errorf("%s: cursor pagination requires a struct return type", query.MethodName)
+		}
+		for _, field := range query.Ret.Struct.Fields {
+			if field.DBName == part {
+				params = append(
+					params, CursorField{
+						Field: field,
+						IsAsc: isAsc,
+					},
+				)
+				break
+			}
+		}
+	}
+	if len(params) != len(parts) {
+		return nil, fmt.Errorf(
+			"%s: cursor pagination requires all fields from cursor to be present in the result struct",
+			query.MethodName,
+		)
+	}
+	return params, nil
+}
+
+func getPaginationParams(isCursorPagination bool, paramsCount int) []*plugin.Parameter {
+	params := make([]*plugin.Parameter, 0)
+	number := int32(paramsCount + 1)
+	if isCursorPagination {
+		params = append(
+			params, &plugin.Parameter{
+				Number: number,
+				Column: &plugin.Column{
+					Name:         "limit",
+					NotNull:      true,
+					IsNamedParam: true,
+					Type: &plugin.Identifier{
+						Name: "int",
+					},
+				},
+			}, &plugin.Parameter{
+				Number: number + 1,
+				Column: &plugin.Column{
+					Name:         "cursor",
+					NotNull:      true,
+					IsNamedParam: true,
+					Type: &plugin.Identifier{
+						Name: "string",
+					},
+				},
+			},
+		)
+
+		return params
+	}
+	params = append(
+		params, &plugin.Parameter{
+			Number: number,
+			Column: &plugin.Column{
+				Name:         "limit",
+				NotNull:      true,
+				IsNamedParam: true,
+				Type: &plugin.Identifier{
+					Name: "int",
+				},
+			},
+		}, &plugin.Parameter{
+			Number: number + 1,
+			Column: &plugin.Column{
+				Name:         "offset",
+				NotNull:      true,
+				IsNamedParam: true,
+				Type: &plugin.Identifier{
+					Name: "int",
+				},
+			},
+		},
+	)
+
+	return params
+}
+
+func getPaginationFlags(query *plugin.Query) (paginated, cursorPagination bool, paginationComment string, err error) {
+	comments := query.Comments
+	for _, comment := range comments {
+		comment = strings.TrimSpace(comment)
+		if strings.HasPrefix(comment, "paginated") {
+			paginated = true
+			paginationComment = comment
+			if strings.Contains(comment, "cursor") {
+				cursorPagination = true
+			}
+			break
+		}
+	}
+	if paginated && query.Cmd != metadata.CmdMany {
+		err = fmt.Errorf("%s: query is marked as paginated but is not a :many query", query.Name)
+		return
+	}
+	if paginated && queryHasLimitRegexp.MatchString(query.Text) {
+		err = fmt.Errorf("%s: using LIMIT in paginated query is forbidden", query.Name)
+		return
+	}
+	if paginated && queryHasOffsetRegexp.MatchString(query.Text) {
+		err = fmt.Errorf("%s: using OFFSET in paginated query is forbidden", query.Name)
+		return
+	}
+	if paginated && cursorPagination && len(query.Columns) < 2 {
+		err = fmt.Errorf("%s: cursor pagination requires a query with at least two columns", query.Name)
+		return
+	}
+	if paginated && cursorPagination && regexpOrderBy.MatchString(query.Text) {
+		err = fmt.Errorf("%s: cursor pagination requires a query without ORDER BY clause", query.Name)
+		return
+	}
+	return
+}
+
+func removeServiceComments(comments []string) []string {
+	var newComments []string
+	for _, comment := range comments {
+		if strings.HasPrefix(comment, "gql:") {
+			continue
+		}
+		if strings.HasPrefix(comment, "paginated:") {
+			continue
+		}
+		if strings.HasPrefix(comment, "gql-comment:") {
+			continue
+		}
+		if strings.HasPrefix(comment, "gql-end") {
+			continue
+		}
+		newComments = append(newComments, comment)
+	}
+	return newComments
+}
+
+func getOffsetPaginationSql(query Query) string {
+	sql := query.SQL
+	limit := 0
+	offset := 0
+	for i, f := range query.Arg.Struct.Fields {
+		if f.Name == "limit" {
+			limit = i + 1
+		}
+		if f.Name == "offset" {
+			offset = i + 1
+		}
+	}
+	return fmt.Sprintf("%s LIMIT %d OFFSET %d", sql, limit, offset)
+}
+
+func getCursorPaginationSql(query Query, cursorFields []CursorField) string {
+	sql := query.SQL
+	limit := 0
+	cursor := 0
+	for i, f := range query.Arg.Struct.Fields {
+		if f.DBName == "limit" {
+			limit = i + 1
+		}
+		if f.DBName == "cursor" {
+			cursor = i + 1
+		}
+	}
+	cursorWhereClause := ""
+	orderClause := ""
+	for i, f := range cursorFields {
+		if i > 0 {
+			cursorWhereClause += " AND"
+			orderClause += ", "
+		}
+		orderClause += f.Field.Column.GetName()
+		sign := ">"
+		if !f.IsAsc {
+			sign = "<"
+			orderClause += " DESC"
+		}
+		cursorWhereClause += fmt.Sprintf(" (%s %s $%d", f.Field.Column.GetName(), sign, cursor+i+1)
+		if i < len(cursorFields)-1 {
+			cursorWhereClause += fmt.Sprintf(" OR (%s = $%d", f.Field.Column.GetName(), cursor+i+1)
+		}
+	}
+	for i := 0; i < len(cursorFields)+1; i++ {
+		cursorWhereClause += ")"
+	}
+	sql = fmt.Sprintf(
+		`SELECT cursor_pagination_source.* 
+FROM (%s) as cursor_pagination_source
+WHERE $%d='' or %s
+ORDER BY %s
+LIMIT $%d`, sql, cursor, cursorWhereClause, orderClause, limit,
+	)
+
+	return sql
 }

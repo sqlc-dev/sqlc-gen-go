@@ -317,19 +317,26 @@ func (v QueryValue) VariableForField(f Field) string {
 	return v.Name + "." + f.Name
 }
 
+type CursorField struct {
+	Field Field
+	IsAsc bool
+}
+
 // A struct used to generate methods and fields on the Queries struct
 type Query struct {
-	Cmd          string
-	Comments     []string
-	MethodName   string
-	FieldName    string
-	ConstantName string
-	SQL          string
-	SQLPaginated string
-	SourceName   string
-	Ret          QueryValue
-	Arg          QueryValue
-	Paginated    bool
+	Cmd              string
+	Comments         []string
+	MethodName       string
+	FieldName        string
+	ConstantName     string
+	SQL              string
+	SQLPaginated     string
+	SourceName       string
+	Ret              QueryValue
+	Arg              QueryValue
+	Paginated        bool
+	CursorPagination bool
+	CursorFields     []CursorField
 
 	// Used for :copyfrom
 	Table *plugin.Identifier
@@ -366,4 +373,45 @@ func (q Query) SQLTotal() string {
 		return fmt.Sprintf("SELECT count(*) as c FROM (%s) as total_res LIMIT 1", q.SQL)
 	}
 	return ""
+}
+
+func (q Query) ReturnedType() string {
+	if q.Cmd == metadata.CmdOne {
+		return q.Ret.DefineType()
+	}
+	if q.Cmd != metadata.CmdMany {
+		return ""
+	}
+	if q.Paginated {
+		if q.CursorPagination {
+			return fmt.Sprintf("%sConnection", q.Ret.DefineType())
+		}
+		return fmt.Sprintf("%sPage", q.Ret.DefineType())
+	}
+	return fmt.Sprintf("[]%s", q.Ret.DefineType())
+}
+
+func (q Query) QueryParams() string {
+	if q.Arg.isEmpty() {
+		return ""
+	}
+	if q.Paginated {
+		pageParams := q.Arg.PagedParams()
+		if q.CursorPagination {
+			pageParamsLines := strings.Split(pageParams, ",")
+			pageParamsItems := make([]string, len(pageParamsLines))
+			for i, line := range pageParamsLines {
+				pageParamsItems[i] = strings.Trim(strings.TrimSpace(line), "\n")
+			}
+			for _, field := range q.CursorFields {
+				pageParamsItems = append(pageParamsItems, "cursor."+field.Field.Name)
+			}
+			if len(pageParamsItems) <= 3 {
+				return strings.Join(pageParamsItems, ",")
+			}
+			pageParamsItems = append(pageParamsItems, "")
+			return "\n" + strings.Join(pageParamsItems, ",\n")
+		}
+	}
+	return q.Arg.Params()
 }

@@ -6,10 +6,12 @@
 const {{.ConstantName}} = {{$.Q}}-- name: {{.MethodName}} {{.Cmd}}
 {{ if .Paginated}}{{escape .SQLPaginated}}{{ else }}{{escape .SQL}}{{end -}}
 {{$.Q}}
-{{ if .Paginated}}
+{{ if .Paginated }}
+	{{- if not .CursorPagination }}
 const {{.ConstantName}}Total = {{$.Q}}
 {{escape .SQLTotal}}
 {{$.Q}}
+	{{- end -}}
 {{- end -}}
 {{end}}
 
@@ -51,14 +53,16 @@ func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) ({{.Ret.De
 {{range .Comments}}//{{.}}
 {{end -}}
 {{- if $.EmitMethodsWithDBArgument -}}
-func (q *Queries) {{.MethodName}}(ctx context.Context, db DBTX, {{.Arg.Pair}}) ({{ if .Paginated}}{{.Ret.DefineType}}Page{{ else }}[]{{.Ret.DefineType}}{{ end }}, error) {
-	rows, err := db.Query(ctx, {{.ConstantName}}, {{ if .Paginated}}{{.Arg.PagedParams}}{{ else }}{{.Arg.Params}}{{ end }})
+func (q *Queries) {{.MethodName}}(ctx context.Context, db DBTX, {{.Arg.Pair}}) ({{.ReturnedType}}, error) {
+	{{- template "decodeCursor" . -}}
+	rows, err := db.Query(ctx, {{.ConstantName}}, {{ .QueryParams}})
 {{- else -}}
-func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) ({{ if .Paginated}}{{.Ret.DefineType}}Page{{ else }}[]{{.Ret.DefineType}}{{ end }}, error) {
-	rows, err := q.db.Query(ctx, {{.ConstantName}}, {{ if .Paginated}}{{.Arg.PagedParams}}{{ else }}{{.Arg.Params}}{{ end }})
+func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) ({{.ReturnedType}}, error) {
+	{{- template "decodeCursor" . }}
+	rows, err := q.db.Query(ctx, {{.ConstantName}}, {{ .QueryParams}})
 {{- end}}
 	if err != nil {
-		return {{ if .Paginated}}{{.Ret.DefineType}}Page{}{{ else }}nil{{ end }}, err
+		return {{ if .Paginated}}{{.ReturnedType}}{}{{ else }}nil{{ end }}, err
 	}
 	defer rows.Close()
 	{{- if $.EmitEmptySlices}}
@@ -69,23 +73,64 @@ func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) ({{ if .Pa
 	for rows.Next() {
 		var {{.Ret.Name}} {{.Ret.Type}}
 		if err := rows.Scan({{.Ret.Scan}}); err != nil {
-			return {{ if .Paginated}}{{.Ret.DefineType}}Page{}{{ else }}nil{{ end }}, err
+			return {{ if .Paginated}}{{.ReturnedType}}{}{{ else }}nil{{ end }}, err
 		}
 		items = append(items, {{.Ret.ReturnName}})
 	}
 	if err := rows.Err(); err != nil {
-		return {{ if .Paginated}}{{.Ret.DefineType}}Page{}{{ else }}nil{{ end }}, err
+		return {{ if .Paginated}}{{.ReturnedType}}{}{{ else }}nil{{ end }}, err
 	}
 {{- if .Paginated}}
-	var total int
-	if err := q.db.QueryRow(ctx, {{.ConstantName}}Total, {{.Arg.ParamsTotal}}).Scan(&total); err != nil {
-		return {{.Ret.DefineType}}Page{}, err
-	}
-	limit := int({{.Arg.Name}}.Limit)
-	if limit > len(items) {
-		limit = len(items)
-	}
-	return {{.Ret.DefineType}}Page{Items: items[:limit], HasNext: len(items) > int({{.Arg.Name}}.Limit), Total: total}, nil
+	{{- if .CursorPagination }}
+		connection := {{.ReturnedType}}{}
+		connection.Edges = make([]{{.Ret.DefineType}}Edge, len(items))
+		hasNext := false
+		if len(items) > int({{.Arg.Name}}.Limit) {
+			hasNext = true
+			items = items[:len(items)-1]
+		}
+		hasPrevious := false
+		if {{.Arg.Name}}.Cursor != "" {
+			hasPrevious = true
+		}
+		connection.PageInfo = PageInfo{
+			HasNextPage: hasNext,
+			HasPreviousPage: hasPrevious,
+		}
+		for i, item := range items {
+			cursor := {{lowerTitle .Ret.Struct.Name}}Cursor {
+				{{- range .CursorFields}}
+					{{.Field.Name}}: item.{{.Field.Name}},
+				{{- end}}
+			}
+			cursorJson, err := json.Marshal(cursor);
+			if err != nil {
+			return {{.ReturnedType}}{}, errors.New("failed to unmarshal a cursor")
+			}
+			cursorValue := base64.StdEncoding.EncodeToString(cursorJson)
+			if i == 0 {
+				connection.PageInfo.StartCursor = cursorValue
+			}
+			if i == len(items) - 1 {
+				connection.PageInfo.EndCursor = cursorValue
+			}
+			connection.Edges = append(connection.Edges, {{.Ret.DefineType}}Edge{
+				Node: item,
+				Cursor: cursorValue,
+			})
+		}
+		return connection, nil
+	{{- else }}
+		var total int
+		if err := q.db.QueryRow(ctx, {{.ConstantName}}Total, {{.Arg.ParamsTotal}}).Scan(&total); err != nil {
+			return {{.Ret.DefineType}}Page{}, err
+		}
+		limit := int({{.Arg.Name}}.Limit)
+		if limit > len(items) {
+			limit = len(items)
+		}
+		return {{.ReturnedType}}{Items: items[:limit], HasNext: len(items) > int({{.Arg.Name}}.Limit), Total: total}, nil
+	{{- end}}
 {{- else }}
 	return items, nil
 {{- end}}
@@ -139,4 +184,23 @@ func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.Pair}}) (pgconn.Co
 
 {{end}}
 {{end}}
+{{end}}
+
+
+{{ define "decodeCursor"}}
+	{{- /*gotype:github.com/sqlc-dev/sqlc-gen-go/internal.Query*/ -}}
+	{{- if .Paginated}}
+	{{- if .CursorPagination }}
+	var cursor {{lowerTitle .Ret.Struct.Name}}Cursor
+	if {{ .Arg.Name}}.Cursor != "" {
+	cursorDec, err := base64.StdEncoding.DecodeString({{ .Arg.Name}}.Cursor)
+	if err != nil {
+	return {{.ReturnedType}}{}, errors.New("failed to decode a cursor")
+	}
+	if err := json.Unmarshal(cursorDec, &cursor); err != nil {
+	return {{.ReturnedType}}{}, errors.New("failed to unmarshal a cursor")
+	}
+	}
+		{{- end -}}
+	{{- end -}}
 {{end}}
