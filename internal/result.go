@@ -184,6 +184,9 @@ func argName(name string) string {
 }
 
 func buildQueries(req *plugin.GenerateRequest, options *opts.Options, structs []Struct) ([]Query, error) {
+	// Build fragment registry from all SQL content
+	fragmentRegistry := buildFragmentRegistry(req)
+	
 	qs := make([]Query, 0, len(req.Queries))
 	for _, query := range req.Queries {
 		if query.Name == "" {
@@ -201,12 +204,19 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, structs []
 		}
 
 		comments := query.Comments
+		
+		// Apply fragment substitution
+		processedSQL, err := fragmentRegistry.SubstituteFragments(query.Text)
+		if err != nil {
+			return nil, fmt.Errorf("fragment substitution error in query %s: %w", query.Name, err)
+		}
+		
 		if options.EmitSqlAsComment {
 			if len(comments) == 0 {
 				comments = append(comments, query.Name)
 			}
 			comments = append(comments, " ")
-			scanner := bufio.NewScanner(strings.NewReader(query.Text))
+			scanner := bufio.NewScanner(strings.NewReader(processedSQL))
 			for scanner.Scan() {
 				line := scanner.Text()
 				comments = append(comments, "  "+line)
@@ -222,7 +232,7 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, structs []
 			FieldName:    sdk.LowerTitle(query.Name) + "Stmt",
 			MethodName:   query.Name,
 			SourceName:   query.Filename,
-			SQL:          query.Text,
+			SQL:          processedSQL,
 			Comments:     comments,
 			Table:        query.InsertIntoTable,
 		}
@@ -447,4 +457,42 @@ func checkIncompatibleFieldTypes(fields []Field) error {
 		}
 	}
 	return nil
+}
+
+func buildFragmentRegistry(req *plugin.GenerateRequest) *FragmentRegistry {
+	registry := NewFragmentRegistry()
+	
+	// Group queries by filename to reconstruct SQL file content
+	fileQueries := make(map[string][]*plugin.Query)
+	for _, query := range req.Queries {
+		fileQueries[query.Filename] = append(fileQueries[query.Filename], query)
+	}
+	
+	// For each SQL file, reconstruct content and parse fragments
+	for _, queries := range fileQueries {
+		// Build a simple approximation of the original SQL file content
+		// This approach assumes fragments are defined before they are used
+		var sqlContent strings.Builder
+		
+		for _, query := range queries {
+			// Add query name comment
+			if query.Name != "" {
+				sqlContent.WriteString(fmt.Sprintf("-- name: %s %s\n", query.Name, query.Cmd))
+			}
+			
+			// Add query text
+			sqlContent.WriteString(query.Text)
+			sqlContent.WriteString("\n\n")
+		}
+		
+		// Parse fragments from the reconstructed content
+		fileRegistry := ParseFragmentsFromSQL(sqlContent.String())
+		
+		// Merge fragments into main registry
+		for name, fragment := range fileRegistry.fragments {
+			registry.AddFragment(name, fragment.SQL)
+		}
+	}
+	
+	return registry
 }
