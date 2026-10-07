@@ -10,10 +10,10 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
-	"github.com/sqlc-dev/plugin-sdk-go/sdk"
 	"github.com/sqlc-dev/plugin-sdk-go/metadata"
 	"github.com/sqlc-dev/plugin-sdk-go/plugin"
+	"github.com/sqlc-dev/plugin-sdk-go/sdk"
+	"github.com/sqlc-dev/sqlc-gen-go/internal/opts"
 )
 
 type tmplCtx struct {
@@ -34,6 +34,7 @@ type tmplCtx struct {
 	EmitPreparedQueries       bool
 	EmitInterface             bool
 	EmitEmptySlices           bool
+	EmitResultSlicePointer    bool
 	EmitMethodsWithDBArgument bool
 	EmitEnumValidMethod       bool
 	EmitAllEnumValues         bool
@@ -178,6 +179,7 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		EmitDBTags:                options.EmitDbTags,
 		EmitPreparedQueries:       options.EmitPreparedQueries,
 		EmitEmptySlices:           options.EmitEmptySlices,
+		EmitResultSlicePointer:    options.EmitResultSlicePointer,
 		EmitMethodsWithDBArgument: options.EmitMethodsWithDbArgument,
 		EmitEnumValidMethod:       options.EmitEnumValidMethod,
 		EmitAllEnumValues:         options.EmitAllEnumValues,
